@@ -28,15 +28,12 @@ const TICKET_REGEX = /ticket=([^"]+)"/;
 const TITLE_REGEX = /<title>(.+?)<\/title>/;
 const SSO_VERIFY_MFA = 'https://sso.garmin.com/sso/verifyMFA/loginEnterMfaCode';
 
-function resolveTokenDir(): string {
-  const configured = process.env.GARMIN_TOKEN_DIR?.trim();
+export function resolveGarminTokenDir(configured?: string): string {
   if (!configured) return path.join(os.homedir(), '.garmin-mcp');
   if (configured === '~') return os.homedir();
   if (configured.startsWith('~/')) return path.join(os.homedir(), configured.slice(2));
   return path.isAbsolute(configured) ? configured : path.resolve(configured);
 }
-
-const TOKEN_DIR = resolveTokenDir();
 const OAUTH1_TOKEN_FILE = 'oauth1_token.json';
 const OAUTH2_TOKEN_FILE = 'oauth2_token.json';
 const PROFILE_FILE = 'profile.json';
@@ -109,6 +106,11 @@ export type RequestOptions = {
   headers?: Record<string, string>;
 };
 
+export type GarminAuthOptions = {
+  tokenDir?: string;
+  persistTokens?: boolean;
+};
+
 export class GarminAuth {
   private email: string;
   private password: string;
@@ -118,6 +120,8 @@ export class GarminAuth {
   private profile: UserProfile | null = null;
   private isAuthenticated = false;
   private promptMfa?: () => Promise<string>;
+  private readonly tokenDir: string;
+  private readonly persistTokens: boolean;
 
   get displayName(): string {
     return this.profile?.displayName ?? '';
@@ -127,10 +131,17 @@ export class GarminAuth {
     return this.profile?.profileId ?? 0;
   }
 
-  constructor(email: string, password: string, promptMfa?: () => Promise<string>) {
+  constructor(
+    email: string,
+    password: string,
+    promptMfa?: () => Promise<string>,
+    options?: GarminAuthOptions,
+  ) {
     this.email = email;
     this.password = password;
     this.promptMfa = promptMfa;
+    this.tokenDir = resolveGarminTokenDir(options?.tokenDir ?? process.env.GARMIN_TOKEN_DIR?.trim());
+    this.persistTokens = options?.persistTokens ?? true;
     this.loadTokens();
   }
 
@@ -448,10 +459,11 @@ export class GarminAuth {
   }
 
   private loadTokens(): void {
+    if (!this.persistTokens) return;
     try {
-      const oauth1Path = path.join(TOKEN_DIR, OAUTH1_TOKEN_FILE);
-      const oauth2Path = path.join(TOKEN_DIR, OAUTH2_TOKEN_FILE);
-      const profilePath = path.join(TOKEN_DIR, PROFILE_FILE);
+      const oauth1Path = path.join(this.tokenDir, OAUTH1_TOKEN_FILE);
+      const oauth2Path = path.join(this.tokenDir, OAUTH2_TOKEN_FILE);
+      const profilePath = path.join(this.tokenDir, PROFILE_FILE);
 
       if (fs.existsSync(oauth1Path)) {
         this.oauth1Token = JSON.parse(fs.readFileSync(oauth1Path, 'utf-8'));
@@ -470,27 +482,29 @@ export class GarminAuth {
   }
 
   private saveTokens(): void {
-    if (!fs.existsSync(TOKEN_DIR)) {
-      fs.mkdirSync(TOKEN_DIR, { recursive: true, mode: 0o700 });
+    if (!this.persistTokens) return;
+
+    if (!fs.existsSync(this.tokenDir)) {
+      fs.mkdirSync(this.tokenDir, { recursive: true, mode: 0o700 });
     }
 
     if (this.oauth1Token) {
       fs.writeFileSync(
-        path.join(TOKEN_DIR, OAUTH1_TOKEN_FILE),
+        path.join(this.tokenDir, OAUTH1_TOKEN_FILE),
         JSON.stringify(this.oauth1Token, null, 2),
         { mode: 0o600 },
       );
     }
     if (this.oauth2Token) {
       fs.writeFileSync(
-        path.join(TOKEN_DIR, OAUTH2_TOKEN_FILE),
+        path.join(this.tokenDir, OAUTH2_TOKEN_FILE),
         JSON.stringify(this.oauth2Token, null, 2),
         { mode: 0o600 },
       );
     }
     if (this.profile) {
       fs.writeFileSync(
-        path.join(TOKEN_DIR, PROFILE_FILE),
+        path.join(this.tokenDir, PROFILE_FILE),
         JSON.stringify(this.profile, null, 2),
         { mode: 0o600 },
       );

@@ -1,4 +1,6 @@
+import crypto from 'node:crypto';
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import axios from 'axios';
 import {
   createAuthorizationCode,
   getOAuthConfigFromEnv,
@@ -6,8 +8,8 @@ import {
   isRedirectUriAllowed,
   validateClient,
   validateOAuthConfig,
-  verifyOwnerCredentials,
 } from "../src/oauth/single-user-oauth.js";
+import { GarminClient, resolveGarminTokenDir } from "../src/client/index.js";
 
 type AuthorizeParams = {
   response_type: string;
@@ -31,6 +33,68 @@ function readBooleanEnv(name: string, fallback: boolean): boolean {
   if (normalized === "true") return true;
   if (normalized === "false") return false;
   return fallback;
+}
+
+function resolveUserTokenDir(username: string): string {
+  const baseDir = resolveGarminTokenDir(process.env.GARMIN_TOKEN_DIR?.trim());
+  const userHash = crypto.createHash('sha256').update(username.toLowerCase()).digest('hex').slice(0, 24);
+  return `${baseDir}/oauth-users/${userHash}`;
+}
+
+function extractProfileId(profile: unknown): number | undefined {
+  if (!profile || typeof profile !== 'object') return undefined;
+  const record = profile as Record<string, unknown>;
+  const profileId = record.profileId ?? record.userProfileNumber;
+  if (typeof profileId === 'number' && Number.isFinite(profileId)) return profileId;
+  if (typeof profileId === 'string') {
+    const parsed = Number.parseInt(profileId, 10);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+function formatGarminAuthError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes('status code 429')) {
+    return 'Garmin rate limit reached. Please wait a moment and try again.';
+  }
+  if (message.includes('MFA is required')) {
+    return 'Garmin MFA is required. Complete setup in an interactive environment first.';
+  }
+  if (message.includes('invalid credentials') || message.includes('status code 401') || message.includes('Login failed')) {
+    return 'Invalid Garmin credentials';
+  }
+  return 'Garmin authentication failed. Please verify credentials and try again.';
+}
+
+function garminAuthErrorDetails(error: unknown): Record<string, unknown> {
+  if (axios.isAxiosError(error)) {
+    return {
+      type: 'axios',
+      message: error.message,
+      code: error.code,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      responseSnippet:
+        typeof error.response?.data === 'string'
+          ? error.response.data.slice(0, 300)
+          : undefined,
+    };
+  }
+
+  if (error instanceof Error) {
+    return {
+      type: 'error',
+      name: error.name,
+      message: error.message,
+      stack: error.stack?.split('\n').slice(0, 3).join('\n'),
+    };
+  }
+
+  return {
+    type: typeof error,
+    value: String(error),
+  };
 }
 
 function htmlEscape(raw: string): string {
@@ -282,12 +346,12 @@ function renderAuthorizeForm(
           <form method="POST" autocomplete="on">
             ${hiddenFields}
             <div class="field">
-              <label for="username">Account Username</label>
-              <input id="username" name="username" type="text" required autocomplete="username" value="${usernameValue}" placeholder="Connector username" />
+              <label for="username">Garmin Email</label>
+              <input id="username" name="username" type="email" required autocomplete="username" value="${usernameValue}" placeholder="you@example.com" />
             </div>
             <div class="field">
-              <label for="password">Connector Password</label>
-              <input id="password" name="password" type="password" required autocomplete="current-password" placeholder="Connector password" />
+              <label for="password">Garmin Password</label>
+              <input id="password" name="password" type="password" required autocomplete="current-password" placeholder="Your Garmin password" />
             </div>
             <div class="actions">
               <button type="submit">Authorize</button>
@@ -601,11 +665,34 @@ export default async function handler(
   const username = readString((formBody ?? {}).username);
   const password = readString((formBody ?? {}).password);
 
-  if (!verifyOwnerCredentials(config, username, password)) {
+  if (!username || !password) {
     res.status(401).setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(
       renderAuthorizeForm(effectiveParams, {
-        message: "Invalid credentials",
+        message: "Garmin email and password are required",
+        username,
+      }),
+    );
+    return;
+  }
+
+  let subject: string;
+  let tokenDir: string;
+  try {
+    tokenDir = resolveUserTokenDir(username);
+    const garminClient = new GarminClient(username, password, undefined, { tokenDir });
+    const profile = await garminClient.getUserProfile();
+    const profileId = extractProfileId(profile);
+    if (!profileId) {
+      throw new Error('Garmin profile did not include profileId');
+    }
+    subject = `garmin:${profileId}`;
+  } catch (error) {
+    console.error('Garmin OAuth authorize failed', garminAuthErrorDetails(error));
+    res.status(401).setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(
+      renderAuthorizeForm(effectiveParams, {
+        message: formatGarminAuthError(error),
         username,
       }),
     );
@@ -626,6 +713,10 @@ export default async function handler(
     codeChallenge: effectiveParams.code_challenge,
     scopes,
     resource: effectiveParams.resource,
+    subject,
+    tokenContext: {
+      garminTokenDir: tokenDir,
+    },
   });
 
   const redirectUri = new URL(effectiveParams.redirect_uri);

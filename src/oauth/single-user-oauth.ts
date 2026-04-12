@@ -12,6 +12,7 @@ type SignedPayload = {
   codeChallenge?: string;
   resource?: string;
   sub?: string;
+  ctx?: string;
 };
 
 export type OAuthRuntimeConfig = {
@@ -19,7 +20,6 @@ export type OAuthRuntimeConfig = {
   clientId: string;
   clientSecret: string;
   ownerUsername: string;
-  ownerPassword: string;
   signingSecret: string;
   allowedRedirectUris: string[];
   defaultScopes: string[];
@@ -34,6 +34,7 @@ export type VerifyTokenResult = {
   expiresAt: number;
   subject: string;
   resource?: string;
+  tokenContext?: Record<string, unknown>;
 };
 
 const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 3600;
@@ -59,6 +60,20 @@ function base64UrlDecode(input: string): string {
   const normalized = input.replace(/-/g, '+').replace(/_/g, '/');
   const pad = normalized.length % 4 === 0 ? '' : '='.repeat(4 - (normalized.length % 4));
   return Buffer.from(`${normalized}${pad}`, 'base64').toString('utf8');
+}
+
+function encodeTokenContext(tokenContext?: Record<string, unknown>): string | undefined {
+  if (!tokenContext) return undefined;
+  return base64UrlEncode(JSON.stringify(tokenContext));
+}
+
+function decodeTokenContext(ctx?: string): Record<string, unknown> | undefined {
+  if (!ctx) return undefined;
+  try {
+    return JSON.parse(base64UrlDecode(ctx)) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
 }
 
 function signingKey(config: OAuthRuntimeConfig): Buffer {
@@ -108,7 +123,6 @@ export function getOAuthConfigFromEnv(): OAuthRuntimeConfig {
   const clientId = (process.env.MCP_OAUTH_CLIENT_ID ?? '').trim();
   const clientSecret = (process.env.MCP_OAUTH_CLIENT_SECRET ?? '').trim();
   const ownerUsername = (process.env.MCP_OAUTH_OWNER_USERNAME ?? process.env.GARMIN_EMAIL ?? '').trim();
-  const ownerPassword = (process.env.MCP_OAUTH_OWNER_PASSWORD ?? '').trim();
   const signingSecret = (process.env.MCP_OAUTH_SIGNING_SECRET ?? '').trim();
   const allowedRedirectUris = (process.env.MCP_OAUTH_REDIRECT_URIS ?? '')
     .split(',')
@@ -137,7 +151,6 @@ export function getOAuthConfigFromEnv(): OAuthRuntimeConfig {
     clientId,
     clientSecret,
     ownerUsername,
-    ownerPassword,
     signingSecret,
     allowedRedirectUris,
     defaultScopes,
@@ -157,8 +170,6 @@ export function validateOAuthConfig(config: OAuthRuntimeConfig): string[] {
   const errors: string[] = [];
   if (!config.clientId) errors.push('MCP_OAUTH_CLIENT_ID is required when MCP_OAUTH_ENABLED=true');
   if (!config.clientSecret) errors.push('MCP_OAUTH_CLIENT_SECRET is required when MCP_OAUTH_ENABLED=true');
-  if (!config.ownerUsername) errors.push('MCP_OAUTH_OWNER_USERNAME (or GARMIN_EMAIL) is required when MCP_OAUTH_ENABLED=true');
-  if (!config.ownerPassword) errors.push('MCP_OAUTH_OWNER_PASSWORD is required when MCP_OAUTH_ENABLED=true');
   if (!config.signingSecret) errors.push('MCP_OAUTH_SIGNING_SECRET is required when MCP_OAUTH_ENABLED=true');
   return errors;
 }
@@ -213,10 +224,6 @@ export function isRedirectUriAllowed(config: OAuthRuntimeConfig, redirectUri: st
   return config.allowedRedirectUris.includes(redirectUri);
 }
 
-export function verifyOwnerCredentials(config: OAuthRuntimeConfig, username: string, password: string): boolean {
-  return username === config.ownerUsername && password === config.ownerPassword;
-}
-
 export function createAuthorizationCode(params: {
   config: OAuthRuntimeConfig;
   clientId: string;
@@ -224,8 +231,11 @@ export function createAuthorizationCode(params: {
   codeChallenge: string;
   scopes?: string[];
   resource?: string;
+  subject?: string;
+  tokenContext?: Record<string, unknown>;
 }): string {
   const now = Math.floor(Date.now() / 1000);
+  const subject = params.subject?.trim() || configDefaultSubject(params.config);
   return makeSignedToken(
     {
       typ: 'auth_code',
@@ -235,10 +245,15 @@ export function createAuthorizationCode(params: {
       codeChallenge: params.codeChallenge,
       scopes: params.scopes && params.scopes.length > 0 ? params.scopes : params.config.defaultScopes,
       resource: params.resource,
-      sub: params.config.ownerUsername,
+      sub: subject,
+      ctx: encodeTokenContext(params.tokenContext),
     },
     params.config,
   );
+}
+
+function configDefaultSubject(config: OAuthRuntimeConfig): string {
+  return config.ownerUsername || 'garmin-user';
 }
 
 function sha256Base64Url(input: string): string {
@@ -281,7 +296,8 @@ export function exchangeAuthorizationCode(params: {
       exp: now + params.config.accessTokenTtlSeconds,
       scopes,
       resource: payload.resource,
-      sub: payload.sub ?? params.config.ownerUsername,
+      sub: payload.sub ?? configDefaultSubject(params.config),
+      ctx: payload.ctx,
     },
     params.config,
   );
@@ -292,7 +308,8 @@ export function exchangeAuthorizationCode(params: {
       exp: now + params.config.refreshTokenTtlSeconds,
       scopes,
       resource: payload.resource,
-      sub: payload.sub ?? params.config.ownerUsername,
+      sub: payload.sub ?? configDefaultSubject(params.config),
+      ctx: payload.ctx,
     },
     params.config,
   );
@@ -338,7 +355,8 @@ export function exchangeRefreshToken(params: {
       exp: now + params.config.accessTokenTtlSeconds,
       scopes: requestedScopes,
       resource: payload.resource,
-      sub: payload.sub ?? params.config.ownerUsername,
+      sub: payload.sub ?? configDefaultSubject(params.config),
+      ctx: payload.ctx,
     },
     params.config,
   );
@@ -350,7 +368,8 @@ export function exchangeRefreshToken(params: {
       exp: now + params.config.refreshTokenTtlSeconds,
       scopes: requestedScopes,
       resource: payload.resource,
-      sub: payload.sub ?? params.config.ownerUsername,
+      sub: payload.sub ?? configDefaultSubject(params.config),
+      ctx: payload.ctx,
     },
     params.config,
   );
@@ -375,8 +394,8 @@ export function verifyAccessToken(config: OAuthRuntimeConfig, token: string): Ve
     clientId: payload.cid,
     scopes: payload.scopes && payload.scopes.length > 0 ? payload.scopes : config.defaultScopes,
     expiresAt: payload.exp,
-    subject: payload.sub ?? config.ownerUsername,
+    subject: payload.sub ?? configDefaultSubject(config),
     resource: payload.resource,
+    tokenContext: decodeTokenContext(payload.ctx),
   };
 }
-

@@ -18,7 +18,13 @@ type SessionContext = {
   server: McpServer;
   transport: StreamableHTTPServerTransport;
   lastSeenAt: number;
+  subject?: string;
 };
+
+type RequestAuthContext =
+  | { kind: 'oauth'; subject: string; garminTokenDir?: string }
+  | { kind: 'api-key' }
+  | { kind: 'none' };
 
 const garminEmail = process.env.GARMIN_EMAIL;
 const garminPassword = process.env.GARMIN_PASSWORD;
@@ -91,7 +97,7 @@ function getApiKeyFromHeaders(req: VercelRequest): string | undefined {
   return match?.[1]?.trim();
 }
 
-function isAuthorized(req: VercelRequest): boolean {
+function getAuthContext(req: VercelRequest): RequestAuthContext {
   if (oauthEnabled) {
     const authHeader = req.headers.authorization;
     const rawAuth = typeof authHeader === 'string' ? authHeader : authHeader?.[0];
@@ -100,11 +106,13 @@ function isAuthorized(req: VercelRequest): boolean {
 
     if (bearerToken) {
       try {
-        verifyAccessToken(oauthConfig, bearerToken);
-        return true;
+        const verified = verifyAccessToken(oauthConfig, bearerToken);
+        const tokenDirRaw = verified.tokenContext?.garminTokenDir;
+        const garminTokenDir = typeof tokenDirRaw === 'string' && tokenDirRaw.trim() ? tokenDirRaw.trim() : undefined;
+        return { kind: 'oauth', subject: verified.subject, garminTokenDir };
       } catch {
         if (oauthAllowApiKeyFallback && mcpApiKey && bearerToken === mcpApiKey) {
-          return true;
+          return { kind: 'api-key' };
         }
       }
     }
@@ -112,16 +120,16 @@ function isAuthorized(req: VercelRequest): boolean {
     if (oauthAllowApiKeyFallback && mcpApiKey) {
       const providedApiKey = getApiKeyFromHeaders(req);
       if (providedApiKey && providedApiKey === mcpApiKey) {
-        return true;
+        return { kind: 'api-key' };
       }
     }
 
-    return false;
+    return { kind: 'none' };
   }
 
-  if (!mcpApiKey) return true;
+  if (!mcpApiKey) return { kind: 'api-key' };
   const provided = getApiKeyFromHeaders(req);
-  return !!provided && provided === mcpApiKey;
+  return provided && provided === mcpApiKey ? { kind: 'api-key' } : { kind: 'none' };
 }
 
 async function parseBody(req: VercelRequest): Promise<unknown> {
@@ -151,10 +159,16 @@ async function parseBody(req: VercelRequest): Promise<unknown> {
   }
 }
 
-async function createStatefulTransport(): Promise<StreamableHTTPServerTransport> {
-  const server = createGarminServer(garminEmail!, garminPassword!, {
+async function createStatefulTransport(authContext: RequestAuthContext): Promise<StreamableHTTPServerTransport> {
+  const isOauthSession = authContext.kind === 'oauth';
+  const hasUserTokenDir = isOauthSession && !!authContext.garminTokenDir;
+  const client = hasUserTokenDir
+    ? new GarminClient('', '', undefined, { tokenDir: authContext.garminTokenDir })
+    : getSharedGarminClient();
+
+  const server = createGarminServer(garminEmail ?? '', garminPassword ?? '', {
     enableWriteTools,
-    client: getSharedGarminClient(),
+    client,
   });
 
   let initializedSessionId: string | undefined;
@@ -168,6 +182,7 @@ async function createStatefulTransport(): Promise<StreamableHTTPServerTransport>
         server,
         transport,
         lastSeenAt: Date.now(),
+        subject: isOauthSession ? authContext.subject : undefined,
       });
     },
     onsessionclosed: (sessionId) => {
@@ -212,7 +227,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     return;
   }
 
-  if (!isAuthorized(req)) {
+  const authContext = getAuthContext(req);
+
+  if (authContext.kind === 'none') {
     if (oauthEnabled) {
       const baseUrl = buildBaseUrlFromHeaders(req.headers as Record<string, string | string[] | undefined>);
       const resourceMetadataUrl = getResourceMetadataUrl(baseUrl, mcpPath);
@@ -227,7 +244,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     return;
   }
 
-  if (!garminEmail || !garminPassword) {
+  if (authContext.kind === 'oauth' && !authContext.garminTokenDir) {
+    writeJson(res, 401, {
+      error: 'Missing Garmin session context. Re-authorize this connector to continue.',
+    });
+    return;
+  }
+
+  const oauthContextWithUser = authContext.kind === 'oauth' && !!authContext.garminTokenDir;
+  if (!oauthContextWithUser && (!garminEmail || !garminPassword)) {
     writeJson(res, 500, {
       error: 'GARMIN_EMAIL and GARMIN_PASSWORD environment variables are required',
     });
@@ -259,7 +284,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       }
 
       if (!sessionId && initializeRequest) {
-        const transport = await createStatefulTransport();
+        const transport = await createStatefulTransport(authContext);
         await transport.handleRequest(req, res, body);
         return;
       }
@@ -272,6 +297,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       const session = sessionId ? sessions.get(sessionId) : undefined;
       if (!session) {
         writeJson(res, 404, { error: 'Session not found' });
+        return;
+      }
+
+      if (session.subject && authContext.kind === 'oauth' && session.subject !== authContext.subject) {
+        writeJson(res, 403, { error: 'Session subject mismatch' });
         return;
       }
 
@@ -288,6 +318,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     const session = sessions.get(sessionId);
     if (!session) {
       writeJson(res, 404, { error: 'Session not found' });
+      return;
+    }
+
+    if (session.subject && authContext.kind === 'oauth' && session.subject !== authContext.subject) {
+      writeJson(res, 403, { error: 'Session subject mismatch' });
       return;
     }
 

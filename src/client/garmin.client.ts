@@ -1,4 +1,4 @@
-import { GarminAuth, type RequestOptions } from './garmin-auth.js';
+import { GarminAuth, type GarminAuthOptions, type RequestOptions } from './garmin-auth.js';
 import {
   USER_SUMMARY_ENDPOINT,
   HEART_RATE_ENDPOINT,
@@ -102,8 +102,13 @@ function todayString(): string {
 export class GarminClient {
   private auth: GarminAuth;
 
-  constructor(email: string, password: string, promptMfa?: () => Promise<string>) {
-    this.auth = new GarminAuth(email, password, promptMfa);
+  constructor(
+    email: string,
+    password: string,
+    promptMfa?: () => Promise<string>,
+    options?: GarminAuthOptions,
+  ) {
+    this.auth = new GarminAuth(email, password, promptMfa, options);
   }
 
   private request<T>(endpoint: string, options?: RequestOptions): Promise<T> {
