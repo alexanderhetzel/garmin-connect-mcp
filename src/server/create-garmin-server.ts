@@ -59,7 +59,7 @@ export function createGarminServer(
   options?: CreateGarminServerOptions,
 ): McpServer {
   const server = new McpServer({
-    name: 'garmin-connect-mcp',
+    name: 'garmcp',
     version: '1.0.0',
   });
 

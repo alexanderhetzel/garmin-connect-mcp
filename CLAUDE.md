@@ -1,4 +1,4 @@
-# Garmin Connect MCP Server
+# GarMCP Server
 
 MCP server for Garmin Connect in TypeScript. 61 tools for accessing fitness, health, and training data.
 

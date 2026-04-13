@@ -20,7 +20,7 @@ const server = createGarminServer(GARMIN_EMAIL, GARMIN_PASSWORD, {
 async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('Garmin Connect MCP server running on stdio');
+  console.error('GarMCP server running on stdio');
 }
 
 main().catch((error) => {

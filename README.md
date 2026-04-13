@@ -1,4 +1,4 @@
-# garmin-connect-mcp
+# GarMCP
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./public/branding/GarMCP_logo_white.svg" />
@@ -6,7 +6,7 @@
   <img src="./public/branding/GarMCP_logo.png" alt="GarMCP logo" width="260" />
 </picture>
 
-Garmin Connect MCP server with two modes:
+GarMCP server with two modes:
 
 - local stdio mode (`npm run start:stdio`)
 - remote Streamable HTTP mode (`npm start`) for Claude Web/Mobile custom connectors

@@ -304,7 +304,7 @@ const httpServer = createServer(async (req, res) => {
 });
 
 httpServer.listen(PORT, '0.0.0.0', () => {
-  console.error(`Garmin MCP HTTP server running on port ${PORT}`);
+  console.error(`GarMCP HTTP server running on port ${PORT}`);
   console.error(`MCP endpoint: ${MCP_PATH}`);
   console.error(`Health endpoint: /health`);
   console.error(`Write tools enabled: ${ENABLE_WRITE_TOOLS}`);

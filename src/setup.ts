@@ -11,7 +11,7 @@ function ask(question: string): Promise<string> {
 
 async function main(): Promise<void> {
   const tokenDir = process.env.GARMIN_TOKEN_DIR ?? '~/.garmin-mcp';
-  console.error('Garmin Connect MCP — Interactive Setup');
+  console.error('GarMCP — Interactive Setup');
   console.error(`This will authenticate with Garmin Connect and save tokens to ${tokenDir}\n`);
 
   const email = process.env.GARMIN_EMAIL ?? await ask('Garmin email: ');

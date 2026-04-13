@@ -208,7 +208,7 @@ export function getOAuthProtectedResourceMetadata(baseUrl: URL, mcpPath = '/mcp'
     resource: new URL(mcpPath.startsWith('/') ? mcpPath : `/${mcpPath}`, baseUrl).href,
     authorization_servers: [baseUrl.href.replace(/\/$/, '')],
     scopes_supported: ['mcp:read'],
-    resource_name: 'Garmin MCP',
+    resource_name: 'GarMCP',
   };
 }
 
