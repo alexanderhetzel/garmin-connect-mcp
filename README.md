@@ -15,16 +15,38 @@ The Garmin API flow is based on [`python-garminconnect`](https://github.com/cybe
 
 ## Runtime Modes
 
-- `npm run start:stdio`: local MCP over stdio (desktop/dev clients)
+- `npm run start:stdio`: local MCP over stdio (manual/debug run)
 - `npm start` / `npm run start:http`: HTTP MCP server
 - Vercel serverless handlers in `api/*` expose OAuth + MCP endpoints
 
-## Local Quickstart (stdio)
+## Local Usage (stdio)
 
 Required:
 
 - `GARMIN_EMAIL`
 - `GARMIN_PASSWORD`
+
+### Claude Desktop / MCP client-managed process (recommended)
+
+For Claude Desktop (and most MCP clients), you usually do **not** run
+`npm run start:stdio` manually. The client starts the stdio process itself
+from its MCP config.
+
+Build once (and rebuild after code changes):
+
+```bash
+npm install
+npm run build
+```
+
+Then configure your MCP client with:
+- command: `node`
+- args: `["/absolute/path/to/garmin-connect-mcp/build/index.js"]`
+- env: `GARMIN_EMAIL`, `GARMIN_PASSWORD` (optional `GARMIN_TOKEN_DIR`)
+
+### Manual stdio run (debug only)
+
+Use manual start only for debugging or direct CLI testing:
 
 ```bash
 GARMIN_EMAIL=you@email.com GARMIN_PASSWORD=yourpass npm run start:stdio
