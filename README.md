@@ -1,6 +1,13 @@
 # garmin-connect-mcp
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./public/branding/GarMCP_logo_white.svg" />
+  <source media="(prefers-color-scheme: light)" srcset="./public/branding/GarMCP_logo.svg" />
+  <img src="./public/branding/GarMCP_logo.png" alt="GarMCP logo" width="260" />
+</picture>
+
 Garmin Connect MCP server with two modes:
+
 - local stdio mode (`npm run start:stdio`)
 - remote Streamable HTTP mode (`npm start`) for Claude Web/Mobile custom connectors
 
@@ -15,6 +22,7 @@ The Garmin API flow is based on [`python-garminconnect`](https://github.com/cybe
 ## Local Quickstart (stdio)
 
 Required:
+
 - `GARMIN_EMAIL`
 - `GARMIN_PASSWORD`
 
@@ -27,6 +35,7 @@ GARMIN_EMAIL=you@email.com GARMIN_PASSWORD=yourpass npm run start:stdio
 ### 1) Configure environment variables in Vercel
 
 Required:
+
 - `MCP_OAUTH_ENABLED=true`
 - `MCP_OAUTH_CLIENT_ID=<your-client-id>`
 - `MCP_OAUTH_CLIENT_SECRET=<your-client-secret>`
@@ -37,10 +46,12 @@ Required:
 - `KV_REST_API_TOKEN=<from Upstash/Vercel integration>`
 
 Recommended:
+
 - `MCP_ENABLE_WRITE_TOOLS=false`
 - `GARMIN_MAX_CONCURRENT_REQUESTS=1`
 
 Optional:
+
 - `GARMIN_TOKEN_DIR=/tmp/garmin-mcp` (namespace base for token keys)
 - `GARMIN_EMAIL` and `GARMIN_PASSWORD` (fallback when token storage is unavailable)
 - `MCP_API_KEY` and `MCP_OAUTH_ALLOW_API_KEY_FALLBACK=true` (Inspector/API-key testing)
@@ -61,6 +72,7 @@ vercel --prod
 - OAuth Client Secret: same value as `MCP_OAUTH_CLIENT_SECRET`
 
 Connector flow:
+
 1. Claude hits `/mcp`
 2. OAuth starts at `/authorize`
 3. User enters Garmin credentials
