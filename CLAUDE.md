@@ -1,6 +1,6 @@
 # GarMCP Server
 
-MCP server for Garmin Connect in TypeScript. 61 tools for accessing fitness, health, and training data.
+MCP server for Garmin Connect in TypeScript. 97 tools for accessing fitness, health, and training data.
 
 ---
 
@@ -22,13 +22,19 @@ src/
     devices.dto.ts       Device params
     index.ts             Barrel
   tools/
-    activities.tools.ts  Activity tools (12)
+    activities.tools.ts  Activity tools (16)
     health.tools.ts      Daily health tools (14)
     trends.tools.ts      Trend tools (4)
     sleep.tools.ts       Sleep tools (2)
     body.tools.ts        Body composition tools (5)
     performance.tools.ts Performance and training tools (11)
-    profile.tools.ts     Profile and device tools (13)
+    profile.tools.ts     Profile and device tools (15)
+    range.tools.ts       Date range tools (7)
+    snapshot.tools.ts    Daily snapshot tools (1)
+    training.tools.ts    Training plan tools (4)
+    wellness.tools.ts    Wellness logging tools (4)
+    challenges.tools.ts  Challenges and badges tools (6)
+    write.tools.ts       Write tools (8)
     index.ts             Barrel
 ```
 

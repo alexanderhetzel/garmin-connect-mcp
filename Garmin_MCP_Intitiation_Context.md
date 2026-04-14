@@ -2,7 +2,7 @@
 
 ## Ziel
 
-Das Repo `alexanderhetzel/garmin-connect-mcp` (Fork von `Nicolasvegam/garmin-connect-mcp`, 61 Tools) soll als remote HTTP-Server auf Railway laufen und in Claude.ai Web + Mobile als MCP Integration eingebunden werden. Das Repo ist auf Original-Stand (keine Änderungen).
+Das Repo `alexanderhetzel/garmin-connect-mcp` (Fork von `Nicolasvegam/garmin-connect-mcp`, 97 Tools) soll als remote HTTP-Server auf Railway laufen und in Claude.ai Web + Mobile als MCP Integration eingebunden werden. Das Repo ist auf Original-Stand (keine Änderungen).
 
 Railway URL: `https://garmin-connect-mcp-production-0559.up.railway.app`
 Railway Environment Variables: `GARMIN_EMAIL`, `GARMIN_PASSWORD` gesetzt.

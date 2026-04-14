@@ -20,7 +20,7 @@ It is built for:
 
 What it provides:
 
-- 90+ Garmin read tools across activity, sleep, recovery, profile, trends, and training data
+- 97 Garmin tools across activity, sleep, recovery, profile, trends, and training data (includes write tools)
 - Streamable HTTP MCP endpoint for Claude Web/Mobile custom connectors
 - local stdio mode for desktop/dev workflows
 - OAuth-protected connector flow and per-user Garmin token storage
