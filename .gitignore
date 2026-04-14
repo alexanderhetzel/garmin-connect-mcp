@@ -3,3 +3,4 @@ build/
 *.tsbuildinfo
 .env
 .vercel
+.DS_Store
