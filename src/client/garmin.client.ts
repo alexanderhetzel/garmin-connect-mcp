@@ -99,6 +99,186 @@ function todayString(): string {
   return new Date().toISOString().split('T')[0]!;
 }
 
+type GarminTypeMeta = {
+  id: number;
+  displayOrder?: number;
+  displayable?: boolean;
+};
+
+const SPORT_TYPE_META: Record<string, GarminTypeMeta> = {
+  running: { id: 1, displayOrder: 1 },
+  cycling: { id: 2, displayOrder: 2 },
+  swimming: { id: 5, displayOrder: 5 },
+};
+
+const STEP_TYPE_META: Record<string, GarminTypeMeta> = {
+  warmup: { id: 1, displayOrder: 1 },
+  cooldown: { id: 2, displayOrder: 2 },
+  interval: { id: 3, displayOrder: 3 },
+  recovery: { id: 4, displayOrder: 4 },
+  rest: { id: 5, displayOrder: 5 },
+  repeat: { id: 6, displayOrder: 6 },
+};
+
+const CONDITION_TYPE_META: Record<string, GarminTypeMeta> = {
+  'lap.button': { id: 1, displayOrder: 1, displayable: true },
+  time: { id: 2, displayOrder: 2, displayable: true },
+  distance: { id: 3, displayOrder: 3, displayable: true },
+  calories: { id: 4, displayOrder: 4, displayable: true },
+  'heart.rate': { id: 5, displayOrder: 5, displayable: true },
+  cadence: { id: 6, displayOrder: 6, displayable: true },
+  iterations: { id: 7, displayOrder: 7, displayable: false },
+  power: { id: 8, displayOrder: 8, displayable: true },
+  reps: { id: 10, displayOrder: 10, displayable: true },
+};
+
+const TARGET_TYPE_META: Record<string, GarminTypeMeta> = {
+  'no.target': { id: 1, displayOrder: 1 },
+  'power.zone': { id: 2, displayOrder: 2 },
+  cadence: { id: 3, displayOrder: 3 },
+  'heart.rate.zone': { id: 4, displayOrder: 4 },
+  'speed.zone': { id: 5, displayOrder: 5 },
+  'pace.zone': { id: 6, displayOrder: 6 },
+};
+
+const DURATION_TYPE_TO_CONDITION_KEY: Record<string, string> = {
+  time: 'time',
+  distance: 'distance',
+  calories: 'calories',
+};
+
+function toRecord(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  return value as Record<string, unknown>;
+}
+
+function normalizeTypedObject(
+  value: unknown,
+  keyField: string,
+  idField: string,
+  meta: Record<string, GarminTypeMeta>,
+  extra?: (record: Record<string, unknown>, entry: GarminTypeMeta) => void,
+): Record<string, unknown> | undefined {
+  const record = toRecord(value);
+  if (!record) return undefined;
+
+  const keyRaw = record[keyField];
+  const key = typeof keyRaw === 'string' ? keyRaw.trim().toLowerCase() : '';
+  if (!key) return record;
+
+  const entry = meta[key];
+  if (!entry) return record;
+
+  if (typeof record[idField] !== 'number') {
+    record[idField] = entry.id;
+  }
+  if (entry.displayOrder !== undefined && typeof record.displayOrder !== 'number') {
+    record.displayOrder = entry.displayOrder;
+  }
+  if (extra) extra(record, entry);
+  return record;
+}
+
+function normalizeWorkoutSteps(stepsValue: unknown): unknown {
+  if (!Array.isArray(stepsValue)) return stepsValue;
+  return stepsValue.map((step) => {
+    const stepRecord = toRecord(step);
+    if (!stepRecord) return step;
+
+    const stepType = normalizeTypedObject(
+      stepRecord.stepType,
+      'stepTypeKey',
+      'stepTypeId',
+      STEP_TYPE_META,
+    );
+    if (stepType) {
+      stepRecord.stepType = stepType;
+      const stepTypeKey = stepType.stepTypeKey;
+      if (typeof stepTypeKey === 'string' && !stepRecord.type) {
+        stepRecord.type = stepTypeKey.toLowerCase() === 'repeat' ? 'RepeatGroupDTO' : 'ExecutableStepDTO';
+      }
+    }
+
+    if (!stepRecord.endCondition) {
+      const durationTypeRecord = toRecord(stepRecord.durationType);
+      const durationTypeKeyRaw = durationTypeRecord?.durationTypeKey;
+      const durationTypeKey = typeof durationTypeKeyRaw === 'string' ? durationTypeKeyRaw.trim().toLowerCase() : '';
+      const mappedConditionKey = DURATION_TYPE_TO_CONDITION_KEY[durationTypeKey];
+      if (mappedConditionKey) {
+        stepRecord.endCondition = { conditionTypeKey: mappedConditionKey };
+      }
+      if (stepRecord.endConditionValue === undefined && typeof stepRecord.durationValue === 'number') {
+        stepRecord.endConditionValue = stepRecord.durationValue;
+      }
+      delete stepRecord.durationType;
+      delete stepRecord.durationValue;
+    }
+
+    const endCondition = normalizeTypedObject(
+      stepRecord.endCondition,
+      'conditionTypeKey',
+      'conditionTypeId',
+      CONDITION_TYPE_META,
+      (record, entry) => {
+        if (entry.displayable !== undefined && typeof record.displayable !== 'boolean') {
+          record.displayable = entry.displayable;
+        }
+      },
+    );
+    if (endCondition) {
+      stepRecord.endCondition = endCondition;
+    }
+
+    const targetType = normalizeTypedObject(
+      stepRecord.targetType,
+      'workoutTargetTypeKey',
+      'workoutTargetTypeId',
+      TARGET_TYPE_META,
+    );
+    if (targetType) {
+      stepRecord.targetType = targetType;
+    }
+
+    if (Array.isArray(stepRecord.workoutSteps)) {
+      stepRecord.workoutSteps = normalizeWorkoutSteps(stepRecord.workoutSteps) as unknown[];
+    }
+
+    return stepRecord;
+  });
+}
+
+function normalizeWorkoutPayload(workoutData: Record<string, unknown>): Record<string, unknown> {
+  const payload: Record<string, unknown> = { ...workoutData };
+
+  const sportType = normalizeTypedObject(
+    payload.sportType,
+    'sportTypeKey',
+    'sportTypeId',
+    SPORT_TYPE_META,
+  );
+  if (sportType) payload.sportType = sportType;
+
+  if (Array.isArray(payload.workoutSegments)) {
+    payload.workoutSegments = payload.workoutSegments.map((segment) => {
+      const segmentRecord = toRecord(segment);
+      if (!segmentRecord) return segment;
+
+      const segmentSportType = normalizeTypedObject(
+        segmentRecord.sportType,
+        'sportTypeKey',
+        'sportTypeId',
+        SPORT_TYPE_META,
+      );
+      if (segmentSportType) segmentRecord.sportType = segmentSportType;
+
+      segmentRecord.workoutSteps = normalizeWorkoutSteps(segmentRecord.workoutSteps);
+      return segmentRecord;
+    });
+  }
+
+  return payload;
+}
+
 function withSportType(workoutData: Record<string, unknown>, sportTypeKey: string): Record<string, unknown> {
   const payload: Record<string, unknown> = { ...workoutData };
 
@@ -565,7 +745,7 @@ export class GarminClient {
   async uploadWorkout(workoutData: Record<string, unknown>): Promise<unknown> {
     return this.request(WORKOUT_ENDPOINT, {
       method: 'POST',
-      body: workoutData,
+      body: normalizeWorkoutPayload(workoutData),
     });
   }
 
