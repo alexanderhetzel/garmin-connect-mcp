@@ -762,7 +762,7 @@ export class GarminClient {
   }
 
   async scheduleWorkout(workoutId: string, date: string): Promise<unknown> {
-    return this.request(`${WORKOUTS_ENDPOINT}/${workoutId}/schedule`, {
+    return this.request(`${SCHEDULED_WORKOUT_ENDPOINT}/${workoutId}`, {
       method: 'POST',
       body: { date },
     });
@@ -775,7 +775,7 @@ export class GarminClient {
   }
 
   async unscheduleWorkout(scheduledWorkoutId: string): Promise<unknown> {
-    return this.request(`${WORKOUTS_ENDPOINT}/${scheduledWorkoutId}/schedule`, {
+    return this.request(`${SCHEDULED_WORKOUT_ENDPOINT}/${scheduledWorkoutId}`, {
       method: 'DELETE',
     });
   }
@@ -813,7 +813,7 @@ export class GarminClient {
   }
 
   async getScheduledWorkout(workoutId: string): Promise<unknown> {
-    return this.request(`${WORKOUTS_ENDPOINT}/${workoutId}/schedule`);
+    return this.request(`${SCHEDULED_WORKOUT_ENDPOINT}/${workoutId}`);
   }
 
   async getMenstrualCalendar(startDate: string, endDate: string): Promise<unknown> {
