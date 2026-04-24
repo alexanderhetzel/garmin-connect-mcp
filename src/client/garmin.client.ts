@@ -99,6 +99,42 @@ function todayString(): string {
   return new Date().toISOString().split('T')[0]!;
 }
 
+function withSportType(workoutData: Record<string, unknown>, sportTypeKey: string): Record<string, unknown> {
+  const payload: Record<string, unknown> = { ...workoutData };
+
+  if (!payload.sportType || typeof payload.sportType !== 'object' || Array.isArray(payload.sportType)) {
+    payload.sportType = { sportTypeKey };
+  } else {
+    payload.sportType = {
+      ...(payload.sportType as Record<string, unknown>),
+      sportTypeKey,
+    };
+  }
+
+  const segments = payload.workoutSegments;
+  if (Array.isArray(segments)) {
+    payload.workoutSegments = segments.map((segment) => {
+      if (!segment || typeof segment !== 'object' || Array.isArray(segment)) return segment;
+      const segmentRecord = segment as Record<string, unknown>;
+      if (!segmentRecord.sportType || typeof segmentRecord.sportType !== 'object' || Array.isArray(segmentRecord.sportType)) {
+        return {
+          ...segmentRecord,
+          sportType: { sportTypeKey },
+        };
+      }
+      return {
+        ...segmentRecord,
+        sportType: {
+          ...(segmentRecord.sportType as Record<string, unknown>),
+          sportTypeKey,
+        },
+      };
+    });
+  }
+
+  return payload;
+}
+
 export class GarminClient {
   private auth: GarminAuth;
 
@@ -524,6 +560,47 @@ export class GarminClient {
 
   async getWorkouts(start = 0, limit = DEFAULT_WORKOUTS_LIMIT): Promise<unknown> {
     return this.request(`${WORKOUTS_ENDPOINT}?start=${start}&limit=${limit}`);
+  }
+
+  async uploadWorkout(workoutData: Record<string, unknown>): Promise<unknown> {
+    return this.request(WORKOUT_ENDPOINT, {
+      method: 'POST',
+      body: workoutData,
+    });
+  }
+
+  async uploadRunningWorkout(workoutData: Record<string, unknown>): Promise<unknown> {
+    return this.uploadWorkout(withSportType(workoutData, 'running'));
+  }
+
+  async uploadCyclingWorkout(workoutData: Record<string, unknown>): Promise<unknown> {
+    return this.uploadWorkout(withSportType(workoutData, 'cycling'));
+  }
+
+  async uploadSwimmingWorkout(workoutData: Record<string, unknown>): Promise<unknown> {
+    return this.uploadWorkout(withSportType(workoutData, 'swimming'));
+  }
+
+  async scheduleWorkout(workoutId: string, date: string): Promise<unknown> {
+    return this.request(SCHEDULED_WORKOUT_ENDPOINT, {
+      method: 'POST',
+      body: {
+        workoutId,
+        date,
+      },
+    });
+  }
+
+  async deleteWorkout(workoutId: string): Promise<unknown> {
+    return this.request(`${WORKOUT_ENDPOINT}/${workoutId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async unscheduleWorkout(scheduledWorkoutId: string): Promise<unknown> {
+    return this.request(`${SCHEDULED_WORKOUT_ENDPOINT}/${scheduledWorkoutId}`, {
+      method: 'DELETE',
+    });
   }
 
   async getWorkout(workoutId: string): Promise<unknown> {

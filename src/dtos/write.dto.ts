@@ -91,3 +91,39 @@ export const gearActivitySchema = z.object({
   gearUuid: z.string().uuid().describe('The UUID of the gear item'),
   activityId: z.number().positive().describe('The Garmin activity ID'),
 });
+
+export type UploadWorkoutDto = {
+  workoutData: Record<string, unknown>;
+};
+
+export const uploadWorkoutSchema = z.object({
+  workoutData: z
+    .record(z.string(), z.any())
+    .describe('Garmin workout payload JSON (structured workout definition)'),
+});
+
+export type ScheduleWorkoutDto = {
+  workoutId: string;
+  date: string;
+};
+
+export const scheduleWorkoutSchema = z.object({
+  workoutId: z.string().describe('The Garmin workout ID to add to the calendar'),
+  date: dateString.describe('Date in YYYY-MM-DD format'),
+});
+
+export type DeleteWorkoutDto = {
+  workoutId: string;
+};
+
+export const deleteWorkoutSchema = z.object({
+  workoutId: z.string().describe('The Garmin workout ID to delete permanently'),
+});
+
+export type UnscheduleWorkoutDto = {
+  scheduledWorkoutId: string;
+};
+
+export const unscheduleWorkoutSchema = z.object({
+  scheduledWorkoutId: z.string().describe('The scheduled workout ID (calendar entry) to remove'),
+});

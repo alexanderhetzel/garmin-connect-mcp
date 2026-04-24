@@ -17,6 +17,13 @@ import {
 } from '../tools/index.js';
 
 const WRITE_TOOL_NAMES = new Set([
+  'upload_workout',
+  'upload_running_workout',
+  'upload_cycling_workout',
+  'upload_swimming_workout',
+  'schedule_workout',
+  'delete_workout',
+  'unschedule_workout',
   'set_activity_name',
   'create_manual_activity',
   'delete_activity',
