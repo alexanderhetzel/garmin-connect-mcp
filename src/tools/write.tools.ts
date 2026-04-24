@@ -12,14 +12,80 @@ import {
   scheduleWorkoutSchema,
   deleteWorkoutSchema,
   unscheduleWorkoutSchema,
+  createStructuredWorkoutSchema,
 } from '../dtos/index.js';
 
 export function registerWriteTools(server: McpServer, client: GarminClient): void {
   server.registerTool(
+    'create_structured_workout',
+    {
+      description:
+        'Create a Garmin workout from a simplified schema (name, sport, timed steps, optional zones/targets). Use this instead of raw upload_workout for most cases.',
+      inputSchema: createStructuredWorkoutSchema.shape,
+    },
+    async ({ workoutName, description, sportTypeKey, steps }) => {
+      const resolvedSport = sportTypeKey ?? 'running';
+      const sportTypeMeta: Record<'running' | 'cycling' | 'swimming', { sportTypeId: number; displayOrder: number }> =
+        {
+          running: { sportTypeId: 1, displayOrder: 1 },
+          cycling: { sportTypeId: 2, displayOrder: 2 },
+          swimming: { sportTypeId: 5, displayOrder: 5 },
+        };
+      const sport = sportTypeMeta[resolvedSport];
+
+      const workoutData: Record<string, unknown> = {
+        workoutName,
+        description: description ?? null,
+        sportType: {
+          sportTypeId: sport.sportTypeId,
+          sportTypeKey: resolvedSport,
+          displayOrder: sport.displayOrder,
+        },
+        subSportType: null,
+        estimatedDistanceUnit: { unitKey: null },
+        estimatedDurationInSecs: steps.reduce((acc, step) => acc + step.durationSeconds, 0),
+        estimatedDistanceInMeters: 0,
+        estimateType: null,
+        avgTrainingSpeed: 0,
+        isWheelchair: false,
+        workoutSegments: [
+          {
+            segmentOrder: 1,
+            sportType: {
+              sportTypeId: sport.sportTypeId,
+              sportTypeKey: resolvedSport,
+              displayOrder: sport.displayOrder,
+            },
+            workoutSteps: steps.map((step, index) => {
+              const baseStep: Record<string, unknown> = {
+                stepOrder: index + 1,
+                stepType: { stepTypeKey: step.stepTypeKey },
+                durationType: { durationTypeKey: 'time' },
+                durationValue: step.durationSeconds,
+                targetType: { workoutTargetTypeKey: step.targetTypeKey ?? 'no.target' },
+              };
+              if (step.zoneNumber !== undefined) baseStep.zoneNumber = step.zoneNumber;
+              if (step.targetValueOne !== undefined) baseStep.targetValueOne = step.targetValueOne;
+              if (step.targetValueTwo !== undefined) baseStep.targetValueTwo = step.targetValueTwo;
+              if (step.description) baseStep.description = step.description;
+              return baseStep;
+            }),
+          },
+        ],
+      };
+
+      const data = await client.uploadWorkout(workoutData);
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
+      };
+    },
+  );
+
+  server.registerTool(
     'upload_workout',
     {
       description:
-        'Upload a structured Garmin workout JSON payload. Use this for general workout creation',
+        'Upload a raw Garmin workout JSON payload (expert mode). Prefer create_structured_workout unless you need full Garmin payload control.',
       inputSchema: uploadWorkoutSchema.shape,
     },
     async ({ workoutData }) => {

@@ -17,6 +17,7 @@ import {
 } from '../tools/index.js';
 
 const WRITE_TOOL_NAMES = new Set([
+  'create_structured_workout',
   'upload_workout',
   'upload_running_workout',
   'upload_cycling_workout',

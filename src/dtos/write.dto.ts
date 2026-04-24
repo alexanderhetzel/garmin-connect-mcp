@@ -127,3 +127,45 @@ export type UnscheduleWorkoutDto = {
 export const unscheduleWorkoutSchema = z.object({
   scheduledWorkoutId: z.string().describe('The scheduled workout ID (calendar entry) to remove'),
 });
+
+export type CreateStructuredWorkoutDto = {
+  workoutName: string;
+  description?: string;
+  sportTypeKey?: 'running' | 'cycling' | 'swimming';
+  steps: Array<{
+    stepTypeKey: 'warmup' | 'interval' | 'recovery' | 'cooldown' | 'rest';
+    durationSeconds: number;
+    targetTypeKey?: 'no.target' | 'heart.rate.zone' | 'power.zone' | 'pace.zone' | 'speed.zone' | 'cadence';
+    zoneNumber?: number;
+    targetValueOne?: number;
+    targetValueTwo?: number;
+    description?: string;
+  }>;
+};
+
+const structuredWorkoutStepSchema = z.object({
+  stepTypeKey: z
+    .enum(['warmup', 'interval', 'recovery', 'cooldown', 'rest'])
+    .describe('Workout step type'),
+  durationSeconds: z.number().positive().describe('Step duration in seconds'),
+  targetTypeKey: z
+    .enum(['no.target', 'heart.rate.zone', 'power.zone', 'pace.zone', 'speed.zone', 'cadence'])
+    .default('no.target')
+    .optional()
+    .describe('Target mode for the step'),
+  zoneNumber: z.number().int().positive().max(10).optional().describe('Optional zone number (e.g. HR zone 2)'),
+  targetValueOne: z.number().optional().describe('Optional lower target bound'),
+  targetValueTwo: z.number().optional().describe('Optional upper target bound'),
+  description: z.string().optional().describe('Optional step note'),
+});
+
+export const createStructuredWorkoutSchema = z.object({
+  workoutName: z.string().min(1).describe('Workout name'),
+  description: z.string().optional().describe('Optional workout description'),
+  sportTypeKey: z
+    .enum(['running', 'cycling', 'swimming'])
+    .default('running')
+    .optional()
+    .describe('Sport type'),
+  steps: z.array(structuredWorkoutStepSchema).min(1).describe('Ordered list of workout steps'),
+});
