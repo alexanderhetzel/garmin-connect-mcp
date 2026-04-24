@@ -252,6 +252,39 @@ function writeJson(res: VercelResponse, statusCode: number, payload: unknown): v
   res.send(JSON.stringify(payload));
 }
 
+function truncateDetail(value: string, max = 800): string {
+  return value.length > max ? `${value.slice(0, max)}...` : value;
+}
+
+function extractErrorStatus(error: unknown): number | undefined {
+  const current = error as {
+    statusCode?: unknown;
+    status?: unknown;
+    response?: { status?: unknown };
+    cause?: unknown;
+  } | null;
+
+  if (!current || typeof current !== 'object') return undefined;
+
+  const candidates = [current.statusCode, current.status, current.response?.status];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate >= 400 && candidate <= 599) {
+      return candidate;
+    }
+  }
+
+  if (current.cause) return extractErrorStatus(current.cause);
+  return undefined;
+}
+
+function extractErrorMessage(error: unknown): string {
+  const current = error as { message?: unknown; cause?: unknown } | null;
+  if (!current || typeof current !== 'object') return 'Internal server error';
+  if (typeof current.message === 'string' && current.message.trim()) return truncateDetail(current.message);
+  if (current.cause) return extractErrorMessage(current.cause);
+  return 'Internal server error';
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   if (!applyCors(req, res)) return;
 
@@ -382,9 +415,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     session.lastSeenAt = Date.now();
     await session.transport.handleRequest(req, res);
   } catch (error) {
+    const upstreamStatus = extractErrorStatus(error);
+    const detail = extractErrorMessage(error);
     console.error('Vercel MCP handler error:', error);
     if (!res.headersSent) {
-      writeJson(res, 500, { error: 'Internal server error' });
+      writeJson(res, upstreamStatus ?? 500, {
+        error: upstreamStatus ? 'Upstream Garmin API error' : 'Internal server error',
+        details: detail,
+      });
     } else {
       res.end();
     }

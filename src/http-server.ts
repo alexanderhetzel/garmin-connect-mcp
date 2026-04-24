@@ -142,6 +142,39 @@ function writeJson(res: ServerResponse, statusCode: number, payload: unknown): v
   res.end(JSON.stringify(payload));
 }
 
+function truncateDetail(value: string, max = 800): string {
+  return value.length > max ? `${value.slice(0, max)}...` : value;
+}
+
+function extractErrorStatus(error: unknown): number | undefined {
+  const current = error as {
+    statusCode?: unknown;
+    status?: unknown;
+    response?: { status?: unknown };
+    cause?: unknown;
+  } | null;
+
+  if (!current || typeof current !== 'object') return undefined;
+
+  const candidates = [current.statusCode, current.status, current.response?.status];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate >= 400 && candidate <= 599) {
+      return candidate;
+    }
+  }
+
+  if (current.cause) return extractErrorStatus(current.cause);
+  return undefined;
+}
+
+function extractErrorMessage(error: unknown): string {
+  const current = error as { message?: unknown; cause?: unknown } | null;
+  if (!current || typeof current !== 'object') return 'Internal server error';
+  if (typeof current.message === 'string' && current.message.trim()) return truncateDetail(current.message);
+  if (current.cause) return extractErrorMessage(current.cause);
+  return 'Internal server error';
+}
+
 function isOriginAllowed(origin: string): boolean {
   if (RAW_ALLOWED_ORIGINS.length === 0) return false;
   if (RAW_ALLOWED_ORIGINS.includes('*')) return true;
@@ -344,7 +377,11 @@ const httpServer = createServer(async (req, res) => {
   } catch (error) {
     console.error('MCP HTTP request failed:', error);
     if (!res.headersSent) {
-      writeJson(res, 500, { error: 'Internal server error' });
+      const upstreamStatus = extractErrorStatus(error);
+      writeJson(res, upstreamStatus ?? 500, {
+        error: upstreamStatus ? 'Upstream Garmin API error' : 'Internal server error',
+        details: extractErrorMessage(error),
+      });
     } else {
       res.end();
     }

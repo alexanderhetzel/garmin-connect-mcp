@@ -92,6 +92,18 @@ function tokenNamespaceFromDir(tokenDir: string): string {
   return crypto.createHash('sha256').update(tokenDir).digest('hex').slice(0, 32);
 }
 
+function toErrorSnippet(data: unknown): string | undefined {
+  if (data === undefined || data === null) return undefined;
+  if (typeof data === 'string') {
+    return data.slice(0, 500);
+  }
+  try {
+    return JSON.stringify(data).slice(0, 500);
+  } catch {
+    return String(data).slice(0, 500);
+  }
+}
+
 let activeRequestCount = 0;
 const requestWaitQueue: Array<() => void> = [];
 
@@ -250,8 +262,13 @@ export class GarminAuth {
           await new Promise((resolve) => setTimeout(resolve, delay));
           continue;
         }
-
-        throw error;
+        const snippet = toErrorSnippet(error.response?.data);
+        const statusText = error.response?.statusText ?? 'Request failed';
+        const endpointLabel = endpoint.startsWith('http') ? endpoint : `${GARMIN_CONNECT_API}${endpoint}`;
+        const detail = snippet ? `${statusText}: ${snippet}` : statusText;
+        throw new Error(`Garmin API error (${method} ${endpointLabel}) [${status ?? 'network'}]: ${detail}`, {
+          cause: error,
+        });
       }
     }
 
