@@ -315,6 +315,30 @@ function withSportType(workoutData: Record<string, unknown>, sportTypeKey: strin
   return payload;
 }
 
+function isNotFoundError(error: unknown): boolean {
+  const current = error as {
+    status?: unknown;
+    statusCode?: unknown;
+    response?: { status?: unknown };
+    cause?: unknown;
+    message?: unknown;
+  } | null;
+
+  if (!current || typeof current !== 'object') return false;
+
+  const candidates = [current.status, current.statusCode, current.response?.status];
+  for (const candidate of candidates) {
+    if (candidate === 404) return true;
+  }
+
+  if (typeof current.message === 'string' && current.message.includes('[404]')) {
+    return true;
+  }
+
+  if (current.cause) return isNotFoundError(current.cause);
+  return false;
+}
+
 export class GarminClient {
   private auth: GarminAuth;
 
@@ -762,13 +786,22 @@ export class GarminClient {
   }
 
   async scheduleWorkout(workoutId: string, date: string): Promise<unknown> {
-    return this.request(SCHEDULED_WORKOUT_ENDPOINT, {
-      method: 'POST',
-      body: {
-        workoutId,
-        date,
-      },
-    });
+    const preferredEndpoint = `${WORKOUTS_ENDPOINT}/${workoutId}/schedule`;
+    try {
+      return await this.request(preferredEndpoint, {
+        method: 'POST',
+        body: { date },
+      });
+    } catch (error) {
+      if (!isNotFoundError(error)) throw error;
+      return this.request(SCHEDULED_WORKOUT_ENDPOINT, {
+        method: 'POST',
+        body: {
+          workoutId,
+          date,
+        },
+      });
+    }
   }
 
   async deleteWorkout(workoutId: string): Promise<unknown> {
@@ -778,9 +811,17 @@ export class GarminClient {
   }
 
   async unscheduleWorkout(scheduledWorkoutId: string): Promise<unknown> {
-    return this.request(`${SCHEDULED_WORKOUT_ENDPOINT}/${scheduledWorkoutId}`, {
-      method: 'DELETE',
-    });
+    const preferredEndpoint = `${WORKOUTS_ENDPOINT}/${scheduledWorkoutId}/schedule`;
+    try {
+      return await this.request(preferredEndpoint, {
+        method: 'DELETE',
+      });
+    } catch (error) {
+      if (!isNotFoundError(error)) throw error;
+      return this.request(`${SCHEDULED_WORKOUT_ENDPOINT}/${scheduledWorkoutId}`, {
+        method: 'DELETE',
+      });
+    }
   }
 
   async getWorkout(workoutId: string): Promise<unknown> {
@@ -816,7 +857,13 @@ export class GarminClient {
   }
 
   async getScheduledWorkout(workoutId: string): Promise<unknown> {
-    return this.request(`${SCHEDULED_WORKOUT_ENDPOINT}/${workoutId}`);
+    const preferredEndpoint = `${WORKOUTS_ENDPOINT}/${workoutId}/schedule`;
+    try {
+      return await this.request(preferredEndpoint);
+    } catch (error) {
+      if (!isNotFoundError(error)) throw error;
+      return this.request(`${SCHEDULED_WORKOUT_ENDPOINT}/${workoutId}`);
+    }
   }
 
   async getMenstrualCalendar(startDate: string, endDate: string): Promise<unknown> {
